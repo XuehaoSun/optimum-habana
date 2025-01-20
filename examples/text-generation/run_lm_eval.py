@@ -215,33 +215,23 @@ def main() -> None:
             args.samples = json.loads(args.samples)
 
     with torch.no_grad():
-        lm = HabanaModelAdapter(tokenizer, model, args, generation_config, max_length=max_length)
-
-    from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
-
-    with HabanaGenerationTime() as timer:
-        with torch.no_grad():
-            results = evaluator.simple_evaluate(
-                lm,
-                tasks=args.tasks,
-                limit=args.limit,
-                samples=args.samples,
-                log_samples=args.log_samples,
-                num_fewshot=args.num_fewshot,
-                fewshot_as_multiturn=args.fewshot_as_multiturn,
-                gen_kwargs=args.gen_kwargs,
-                system_instruction=args.system_instruction,
-                apply_chat_template=args.apply_chat_template,
-                metadata=metadata,
-                confirm_run_unsafe_code=args.confirm_run_unsafe_code,
-            )
-        if args.device == "hpu":
-            import habana_frameworks.torch.hpu as torch_hpu
-
-            torch_hpu.synchronize()
+        from neural_compressor.evaluation.lm_eval import evaluate, LMEvalParser
+        eval_args = LMEvalParser(
+            model="hf", 
+            user_model=model,
+            tokenizer=tokenizer,
+            batch_size=1,
+            tasks=','.join(args.tasks),
+            device="hpu",
+            pad_to_buckets=True,
+            num_fewshot=5 if ("mmlu" in args.tasks) else 0,
+        )
+        results = evaluate(eval_args)
+    if args.device == "hpu":
+        import habana_frameworks.torch.hpu as torch_hpu
+        torch_hpu.synchronize()
 
     results["args"] = vars(args)
-    results["duration"] = timer.last_duration
 
     if args.local_rank == 0:
         if args.device == "hpu":
