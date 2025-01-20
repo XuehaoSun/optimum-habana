@@ -97,126 +97,7 @@ def setup_lm_eval_parser():
     return args
 
 
-class HabanaModelAdapter(HFLM):
-    def __init__(
-        self,
-        tokenizer: AutoTokenizer,
-        model: AutoModelForCausalLM,
-        args: argparse.Namespace,
-        options: GenerationConfig,
-        backend: Literal["default", "causal", "seq2seq"] = "default",
-        logits_cache: bool = True,
-        add_bos_token: Optional[bool] = False,
-        delta: Optional[str] = None,
-        **kwargs,
-    ) -> None:
-        # To skip cuda code of the HFLM init
-        TemplateLM.__init__(self)
-        self.tokenizer = tokenizer
-        self._model = model
-        self._config = self._model.config
-        self._batch_size = args.batch_size
-        self.buckets: list[int] = sorted(args.buckets)
-        self.options = options
-        self.device_ = args.device
-        self.pretrained = model
-        self.peft = args.peft_model
-        self.delta = delta
-        # determine which of 'causal' and 'seq2seq' backends to use for HF models
-        self._get_backend(config=self._config, backend=backend, trust_remote_code=args.trust_remote_code)
-        self.logits_cache = logits_cache
-        self.add_bos_token = add_bos_token
-        self._max_length = options.max_length
-        self.batch_size_per_gpu = int(args.batch_size)
-        self.revision = args.model_revision
-        self.model_inputs = {"use_cache": self.options.use_cache}
-        if self._model.config.model_type in [
-            "llama",
-            "mistral",
-            "falcon",
-            "phi",
-            "mixtral",
-            "qwen2",
-            "gptj",
-            "starcoder2",
-            "gemma",
-            "baichuan",
-        ]:
-            self.model_inputs.update(
-                {
-                    "reuse_cache": self.options.reuse_cache,
-                }
-            )
-
-        if self.model.config.model_type in [
-            "llama",
-            "mistral",
-            "qwen2",
-            "falcon",
-            "starcoder2",
-            "gemma",
-            "baichuan",
-            "gpt_bigcode",
-        ]:
-            if self.model.config.model_type not in ["falcon", "gpt_bigcode"]:
-                self.model_inputs.update(
-                    {
-                        "attn_softmax_bf16": self.options.attn_softmax_bf16,
-                    }
-                )
-            self.model_inputs.update(
-                {
-                    "use_flash_attention": self.options.use_flash_attention,
-                    "flash_attention_recompute": self.options.flash_attention_recompute,
-                    "flash_attention_causal_mask": self.options.flash_attention_causal_mask,
-                }
-            )
-            if self.model.config.model_type in ["llama", "qwen2", "baichuan", "gpt_bigcode"]:
-                self.model_inputs.update({"flash_attention_fast_softmax": self.options.flash_attention_fast_softmax})
-        if args.warmup:
-            self.warm_up()
-
-    def warm_up(self) -> None:
-        for bucket_size in reversed(self.buckets):
-            inps = torch.ones((self._batch_size, bucket_size), dtype=torch.int64)
-            self._model_call(inps)
-
-    @property
-    def eot_token_id(self) -> int:
-        return self._model.config.eos_token_id
-
-    @property
-    def max_length(self) -> int:
-        return self.buckets[-1]
-
-    @property
-    def device(self):
-        # We need to do padding ourselves, otherwise we'll end up with recompilations
-        # Returning 'cpu' to keep tensors on CPU in lm_eval code
-        return "cpu"
-
-    def find_bucket(self, length: int) -> list[int]:
-        return [b for b in self.buckets if b >= length][0]
-
-    def _model_call(self, inps: torch.Tensor) -> torch.Tensor:
-        bs, seq_length = inps.shape
-        padding_length = 0
-        if self.options.static_shapes:
-            bucket_length = self.find_bucket(seq_length)
-            if self.options.use_cache and self.options.reuse_cache:
-                self._model.allocate_kv_cache(bs, bucket_length + 1, bucket_length)
-            padding_length = bucket_length - seq_length
-            inps = F.pad(inps, (0, padding_length), value=self._model.config.pad_token_id)
-        logits = self._model(inps.to(self.device_), **self.model_inputs)["logits"].cpu()
-
-        if self.options.static_shapes and padding_length > 0:
-            logits = logits[:, :-padding_length, :]
-        logits = logits.to(torch.float32)
-        return logits
-
-
-def main() -> None:
-    # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.7/lm_eval/__main__.py/#L268
+def main():
     args = setup_lm_eval_parser()
     model, _, tokenizer, generation_config = initialize_model(args, logger)
     if args.trust_remote_code:
@@ -224,9 +105,6 @@ def main() -> None:
         import datasets
 
         datasets.config.HF_DATASETS_TRUST_REMOTE_CODE = True
-
-    with torch.no_grad():
-        lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
     eval_start = time.perf_counter()
     with torch.no_grad():
