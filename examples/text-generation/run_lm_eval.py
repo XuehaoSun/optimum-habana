@@ -230,7 +230,18 @@ def main() -> None:
 
     eval_start = time.perf_counter()
     with torch.no_grad():
-        results = evaluator.simple_evaluate(lm, tasks=args.tasks, limit=args.limit_iters)
+        from neural_compressor.evaluation.lm_eval import evaluate, LMEvalParser
+        eval_args = LMEvalParser(
+            model="hf", 
+            user_model=model,
+            tokenizer=tokenizer,
+            batch_size=1,
+            tasks=','.join(args.tasks),
+            device="hpu",
+            pad_to_buckets=True,
+            num_fewshot=5 if ("mmlu" in args.tasks) else 0,
+        )
+        results = evaluate(eval_args)
     if args.device == "hpu":
         import habana_frameworks.torch.hpu as torch_hpu
 
