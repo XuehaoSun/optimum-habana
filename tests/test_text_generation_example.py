@@ -19,17 +19,18 @@ from .utils import OH_DEVICE_CONTEXT
 prev_quant_model_name = None
 prev_quant_rank = 0
 
-if OH_DEVICE_CONTEXT in ["gaudi2"]:
+if OH_DEVICE_CONTEXT not in ["gaudi1"]:
+    # Gaudi2+
     MODELS_TO_TEST = {
         "bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, False),
             ("gpt2-xl", 1, False, False),
-            ("EleutherAI/gpt-j-6b", 1, False, False),
+            pytest.param("EleutherAI/gpt-j-6b", 1, False, False, marks=pytest.mark.skip("Deprecated in v1.20")),
             ("EleutherAI/gpt-neox-20b", 1, False, False),
             ("meta-llama/Llama-2-7b-hf", 1, True, True),
             ("tiiuae/falcon-40b", 1, True, False),
             ("bigcode/starcoder", 256, True, True),
-            ("Salesforce/codegen2-1B", 1, False, False),
+            pytest.param("Salesforce/codegen2-1B", 1, False, False, marks=pytest.mark.skip("Deprecated")),
             ("mosaicml/mpt-30b", 1, False, False),
             ("mistralai/Mistral-7B-v0.1", 1, True, True),
             ("mistralai/Mixtral-8x7B-v0.1", 1, False, True),
@@ -45,7 +46,7 @@ if OH_DEVICE_CONTEXT in ["gaudi2"]:
             ("google/gemma-7b", 1, False, True),
             ("google/gemma-2-9b", 1, False, True),
             ("google/gemma-2-27b", 1, False, True),
-            ("state-spaces/mamba-130m-hf", 1536, False, False),
+            pytest.param("state-spaces/mamba-130m-hf", 1536, False, False, marks=pytest.mark.skip("Deprecated")),
             # ("Deci/DeciLM-7B", 1, False, False),
             ("Qwen/Qwen2-7B", 256, False, True),
             ("Qwen/Qwen1.5-MoE-A2.7B", 1, True, False),
@@ -114,7 +115,7 @@ if OH_DEVICE_CONTEXT in ["gaudi2"]:
         ],
     }
 else:
-    # Gaudi1 CI
+    # Gaudi1
     MODELS_TO_TEST = {
         "bf16_1x": [
             ("bigscience/bloomz-7b1", 1, False, False),
