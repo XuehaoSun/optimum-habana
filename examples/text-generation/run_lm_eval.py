@@ -235,6 +235,7 @@ def main() -> None:
 
     if args.local_rank == 0:
         if args.device == "hpu":
+            from optimum.habana.utils import get_hpu_memory_stats
             mem = get_hpu_memory_stats()
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
